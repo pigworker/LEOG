@@ -98,3 +98,32 @@ xt (t, th) = case t of
 
 va :: Int -> Comp
 va i = (V, cod i)
+
+-- uglyprinting
+
+myNames :: [String]
+myNames =
+  [ y:x
+  | x <- "" : map show [0 ..]
+  , y <- ['a'..'z']
+  ]
+
+blat :: Bwd String -> [String] -> Bool{-car?-} -> (Tm d, Th) -> String
+blat nz ns@(n:ns') b t = case xt t of
+  XA (N 0) -> if b then "[]" else ""
+  XA (N n) -> (if b then id else ("|"++)) $ show n
+  XC s t   -> if b
+    then concat ["[", blat nz ns True s, blat nz ns False t, "]"]
+    else concat [" ", blat nz ns True s, blat nz ns False t]
+  _ | not b -> "|" ++ blat nz ns True t
+  XU u     -> show u
+  XB t     -> concat
+    ["\\", n, ".", blat (nz :< n) ns' True t]
+  XS e (A NIL, _) -> blat nz ns True e
+  XS e q -> concat [blat nz ns True e, "{", blat nz ns True q, "}"]
+  XV i   -> nz <! i
+  XE e s -> concat ["(",blat nz ns True e, "-", blat nz ns True s, ")"]
+  XR t u -> concat ["(",blat nz ns True t, ":", blat nz ns True u, ")"]
+
+displayClosed :: (Tm d, Th) -> IO ()
+displayClosed t = putStrLn (blat B0 myNames True t)

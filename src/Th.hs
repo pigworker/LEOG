@@ -37,6 +37,11 @@ instance Monoid Th where
 
 instance Semigroup Th where (<>) = mappend
 
+combien :: Th -> Int -> Int
+combien _  0 = 0
+combien th m = case thun th of
+  (th, b) -> combien th (m - 1) + (if b then 1 else 0)
+
 cod :: Int -> Th
 cod 0 = me
 cod n = cod (n - 1) -: False

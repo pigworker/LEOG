@@ -9,11 +9,11 @@ import Tm
 import Control.Arrow ((***), first, second)
 
 import Debug.Trace
-track = trace
+track = const id
 
 eval :: {-m-}Int -> En {-n,m-} -> (Tm d, Th){-n-} -> (Tm d, Th) {-m-}
 eval m rh (t, th) = case th ^% rh of
-  (rh, th) -> ev m rh t -^ th
+  (rh, th) -> ev (combien th m) rh t -^ th
 
 ev :: {-m-}Int -> En {-n,m-} -> Tm d {-n-} -> (Tm d, Th) {-m-}
 ev m rh t

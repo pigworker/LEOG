@@ -1,83 +1,100 @@
 {-# LANGUAGE DataKinds, GADTs, KindSignatures, StandaloneDeriving,
-    PatternSynonyms, LambdaCase #-}
+    PatternSynonyms, LambdaCase, PatternGuards, TypeFamilies #-}
 
 module Tm where
 
 import Th
 import Bwd
 
-type Term = (Tm Chk, Th)
+-- directions are "checkable" and "synthesizable"
+data Dir = Ch | Sy deriving (Show, Eq)
 
+-- terms are free, checkable, codebruijn
+type Term = (Tm Ch, Th)
+-- computations are free, synthesizable, codebruijn
+type Comp = (Tm Sy, Th)
+
+data Tm (d :: Dir) :: * where
+  A :: Atom -> Tm Ch {-0-}
+  U :: U -> Tm Ch {-0-}
+  B :: Sc {-n-} -> Tm Ch {-n-}
+  V :: Tm Sy {-1-}
+  P :: Pair a c -> (Tm a, Th) {-n-} -> (Tm Ch, Th) {-n-} -> Tm c {-n-}
+    -- note that the left and right thinnings must constitute a covering
+deriving instance Show (Tm d)
+
+-- atoms are represented numerically
 newtype Atom = N Int deriving (Show, Eq)
 pattern NIL = N 0
 pattern PI  = N 1
 
-data Dir = Chk | Syn deriving (Show, Eq)
+-- sorts are prop or type
+data U = Prop | Type Int deriving (Show, Eq)
 
-data Tm (d :: Dir) :: * where
-  A :: Atom -> Tm Chk
-  U :: Int -> Tm Chk
-  B :: Sco -> Tm Chk
-  V :: Tm Syn
-  P :: (Tm a, Th) -> Pair a b c -> (Tm b, Th) -> Tm c
-deriving instance Show (Tm d)
+-- scopes are vacuous or otherwise
+data Sc {-n-} :: * where
+  K :: Tm Ch {-n-} -> Sc {-n-}
+  L :: Tm Ch {-n+1-} -> Sc {-n-}
+deriving instance Show Sc
 
-data Sco
-  = K (Tm Chk)
-  | L (Tm Chk)
-  deriving Show
+-- valid forms of pairing
+data Pair (a :: Dir)(c :: Dir) :: * where
+  C :: Pair Ch Ch -- canonical form
+  R :: Pair Ch Sy -- radical
+  E :: Pair Sy Sy -- elimination
+  S :: Pair Sy Ch -- syn coerced into chk by eq prf
+deriving instance Show (Pair a c)
 
-data Pair (a :: Dir)(b :: Dir)(c :: Dir) :: * where
-  C :: Pair Chk Chk Chk
-  R :: Pair Chk Chk Syn
-  E :: Pair Syn Chk Syn
-  S :: Pair Syn Chk Chk
-deriving instance Show (Pair a b c)
+-- smart constructor for pairing
+(%) :: Pair a c -> ((Tm a, Th) {-n-}, (Tm Ch, Th) {-n-}) -> (Tm c, Th) {-n-}
+p % (s, t) = case relp s t of
+  (s, ps, t) -> (P p s t, ps)
 
-(%) :: Pair a b c -> ((Tm a, Th), (Tm b, Th)) -> (Tm c, Th)
-p % ((s, th), (t, ph)) = case cop th ph of
-  (th, ps, ph) -> (P (s, th) p (t, ph), ps)
-
-bi :: Term -> Term
+-- smart constructor for binding
+bi :: Term {-n+1-} -> Term {-n-}
 bi (t, Th th) = case divMod th 2 of
   (th, 0) -> (B (K t), Th th)
   (th, 1) -> (B (L t), Th th)
 
-ib :: Sco -> Th -> Term
-ib (K t) th = (t, th -: False)
-ib (L t) th = (t, th -: True)
+-- going under a binder
+ib :: (Sc, Th) {-n-} -> Term {-n+1-}
+ib (K t, th) = (t, th -: False)
+ib (L t, th) = (t, th -: True)
 
+-- a context is a backward list of types for vars with *all* in scope
 type Cx = Bwd Term
 
+-- if term is a right-nested nil-terminated tuple, make it a list
 tup :: Term -> Maybe [Term]
 tup (A NIL, _) = pure []
-tup (P s C t, ps) = (-^ ps) <$> ((s :) <$> tup t)
+tup (P C s t, ps) = (-^ ps) <$> ((s :) <$> tup t)
 
-ty :: Cx -> Term -> Maybe ()
-ty _ (U _, _) = pure ()
-ty ga (P e S q, ps) = do
-  u <- syn ga (e -^ ps)
-  qs ga u q
-ty ga t = tup t >>= \case
-  [(A PI, _), s, (B t, ph)] -> do
-    ty ga s
-    ty ((ga :< s) -^ wk) (ib t ph)
-  _ -> Nothing
+list :: [Term] -> Term
+list [] = (A NIL, no)
+list (x : xs) = C % (x, list xs)
 
-qs :: Cx -> Term -> Term -> Maybe ()
-qs ga (U _, _) (A NIL, _) = pure ()
-qs _ _ _ = Nothing
+-- top-layer expansion
+data XTm (d :: Dir) :: * where
+  XA :: Atom -> XTm Ch {-n-}
+  XU :: U -> XTm Ch {-n-}
+  XB :: Term {-n+1-} -> XTm Ch {-n-}
+  XC :: Term {-n-} -> Term {-n-} -> XTm Ch {-n-}
+  XS :: Comp {-n-} -> Term {-n-} -> XTm Ch {-n-}
+  XV :: Int {-<n-} -> XTm Sy {-n-}
+  XE :: Comp {-n-} -> Term {-n-} -> XTm Sy {-n-}
+  XR :: Term {-n-} -> Term {-n-} -> XTm Sy {-n-}  
+deriving instance Show (XTm d)
 
-syn :: Cx -> (Tm Syn, Th) -> Maybe Term
-syn ga (V, th) = case th <? ga of
-  _ :< s -> pure s
-syn ga (P t R u, ps) = do
-  u <- pure (u -^ ps)
-  t <- pure (t -^ ps)
-  ty ga u
-  chk ga u t
-  pure t
-syn _ _ = Nothing
+xt :: (Tm d, Th) {-n-} -> XTm d
+xt (t, th) = case t of
+  A a     -> XA a
+  U u     -> XU u
+  B b     -> XB (ib (b, th))
+  P C s t -> XC (s -^ th) (t -^ th)
+  P S e q -> XS (e -^ th) (q -^ th)
+  V       -> XV (deb th)
+  P E e s -> XE (e -^ th) (s -^ th)
+  P R t u -> XR (t -^ th) (u -^ th)
 
-chk :: Cx -> Term -> Term -> Maybe ()
-chk ga _ _ = Nothing
+va :: Int -> Comp
+va i = (V, cod i)

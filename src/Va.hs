@@ -70,18 +70,20 @@ th ^% ((rh, ph0) :& (c, ph1)) = case thun th of
 
 --
 
-pidty :: Term {-0-}
-pidty = list [(A PI, no), (U (Type 0), no), bi $
-          list [(A PI, no), (S % (va 0, (A NIL, no))), bi (S % (va 1, (A NIL, no)))
-          ]
-        ]
+pidty :: U -> Term {-0-}
+pidty u =
+  list [(A PI, no), (U u, no), bi $
+    list [(A PI, no), (S % (va 0, (A NIL, no))), bi (S % (va 1, (A NIL, no)))
+  ] ]
+   
 
 pidfu :: Term {-0-}
 pidfu = bi (bi (S % (va 0, (A NIL, no))))
 
-ptest :: Comp {-0-}
-ptest = E % ( E % ( R % (pidfu, pidty)
-                  , pidty
-                  )
-            , pidfu
+ptest :: U -> Comp {-0-}
+ptest u =
+  E % ( E % ( R % (pidfu, pidty u)
+            , pidty (Type 0)
             )
+      , pidfu
+      )

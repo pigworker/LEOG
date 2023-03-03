@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, GADTs, PatternGuards #-}
+{-# LANGUAGE LambdaCase, GADTs, PatternGuards, DataKinds #-}
 
 module Ty where
 
@@ -9,6 +9,8 @@ import Th
 import Tm
 import Va
 
+import Debug.Trace
+truce = const id
 
 ------------------------------------------------------------------------------
 -- the monad of knowing the types of the free variables and sometimes barfing
@@ -29,12 +31,21 @@ instance Functor TC where fmap = ap . return
 ixty :: Int -> TC Term
 ixty i = TC $ \ ga -> Just (ga <! i)
 
+scop :: TC Int
+scop = TC $ (Just . length)
+
 norm :: (Tm d, Th) -> TC (Tm d, Th)
-norm t = TC $ \ ga -> let m = length ga in
-  Just $ eval m (iden m) t
+norm t = scop >>= \ m -> pure $ eval m (iden m) t
+
+(//) :: (Tm d, Th){-n+1-} -> Comp{-n-} -> TC (Tm d, Th)
+t // s = scop >>= \ m -> pure $ eval m (sben m s) t
 
 barf :: TC a
 barf = TC $ \ _ -> Nothing
+
+must :: Maybe x -> TC x
+must (Just x) = pure x
+must Nothing  = barf
 
 class Discharge t where
   discharge :: Type {-n-}  -- type of bound variable
@@ -60,16 +71,18 @@ closed (TC f) = f B0
 -- check some types?
 ------------------------------------------------------------------------------
 
+isPi :: XTm Ch {-n-} -- presumed normalised
+     -> Maybe (Term {-n-}, Term {-n+1-})
+isPi (XC (A PI, _) st) | Just [sS, b] <- tup st, XB tT <- xt b = Just (sS, tT)
+isPi _ = Nothing
+
 ty :: Term -> TC ()
+ty t | truce ("type " ++ show t) False = undefined
 ty t = case xt t of
   XU _ -> pure ()
-  XC (A PI, _) st -> case tup st of
-    Just [sS, tT] -> case xt tT of
-      XB tT -> do
-        ty sS
-        sS !- ty tT
-      _ -> barf
-    _ -> barf
+  x | Just (sS, tT) <- isPi x -> do
+    ty sS
+    sS !- ty tT
   XS e q -> do
     sS <- sy e
     sS <- tg sS q >>= norm
@@ -79,27 +92,36 @@ ty t = case xt t of
   _ -> barf
 
 sy :: Comp -> TC Type
+sy e | truce ("sy " ++ show e) False = undefined
 sy e = case xt e of
   XV i -> ixty i
   XR t tT -> do
     ty tT
     ch tT t
     pure tT
-  _ -> barf
+  XE e s -> do
+    sS <- sy e >>= norm
+    case xt sS of
+      x | Just (sS, tT) <- isPi x -> do
+        ch sS s
+        tT // (R % (s, sS))
+      _ -> barf
 
 tg :: Type -> Term -> TC Type
+tg sS q | truce ("tg " ++ show sS ++ " " ++ show q) False = undefined
 tg sS q = case xt q of
   XA NIL -> pure sS
   _ -> barf
 
 ch :: Type -> Term -> TC ()
+ch uU t | truce ("ch " ++ show uU ++ " " ++ show t) False = undefined
 ch uU t = case xt t of
   XU v -> (xt <$> norm uU) >>= \case
     XU w | ltU v w -> pure ()
     _ -> barf
-  XC (A PI, _) st | Just [sS, b] <- tup st, XB tT <- xt b -> do
+  x | Just (sS, tT) <- isPi x -> do
     uU <- norm uU
-    case xt tT of
+    case xt uU of
       XU Prop -> do
         ty sS
         sS !- ch uU tT
@@ -108,9 +130,8 @@ ch uU t = case xt t of
         sS !- ch uU tT
       _ -> barf
   XB t -> (xt <$> norm uU) >>= \case
-     XC (A PI, _) st | Just [sS, b] <- tup st, XB tT <- xt b -> do
-       sS !- ch tT t
-     _ -> barf
+    x | Just (sS, tT) <- isPi x -> sS !- ch tT t
+    _ -> barf
   XS e q -> do
     sS <- sy e
     sS <- tg sS q
@@ -118,6 +139,7 @@ ch uU t = case xt t of
   _ -> barf
 
 cu :: Type -> Type -> TC ()
+cu sS tT | truce ("cu " ++ show sS ++ " " ++ show tT) False = undefined
 cu sS tT = do
   sS <- norm sS
   tT <- norm tT
@@ -142,8 +164,8 @@ ltU  Prop    (Type i) = 0 < i
 ltU (Type i) (Type j) = i < j
 ltU  _        _       = False
 
-
 uq :: Type -> Type -> TC ()
+uq aA bB | truce ("uq " ++ show aA ++ " " ++ show bB) False = undefined
 uq aA bB = do
   aA <- norm aA  -- optimize another day
   bB <- norm bB
@@ -157,6 +179,7 @@ uq aA bB = do
     _ -> barf
 
 sq :: Comp -> Comp -> TC Type
+sq ea eb | truce ("sq " ++ show ea ++ " " ++ show eb) False = undefined
 sq ea eb = do
   ea <- norm ea
   eb <- norm eb

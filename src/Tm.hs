@@ -11,6 +11,7 @@ data Dir = Ch | Sy deriving (Show, Eq)
 
 -- terms are free, checkable, codebruijn
 type Term = (Tm Ch, Th)
+type Type = Term -- use this synonym to document terms trudsted to be types
 -- computations are free, synthesizable, codebruijn
 type Comp = (Tm Sy, Th)
 
@@ -60,9 +61,6 @@ bi (t, Th th) = case divMod th 2 of
 ib :: (Sc, Th) {-n-} -> Term {-n+1-}
 ib (K t, th) = (t, th -: False)
 ib (L t, th) = (t, th -: True)
-
--- a context is a backward list of types for vars with *all* in scope
-type Cx = Bwd Term
 
 -- if term is a right-nested nil-terminated tuple, make it a list
 tup :: Term -> Maybe [Term]

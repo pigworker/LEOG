@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, GADTs #-}
+{-# LANGUAGE LambdaCase, GADTs, PatternGuards #-}
 
 module Ty where
 
@@ -29,7 +29,7 @@ instance Functor TC where fmap = ap . return
 ixty :: Int -> TC Term
 ixty i = TC $ \ ga -> Just (ga <! i)
 
-norm :: Term -> TC Term
+norm :: (Tm d, Th) -> TC (Tm d, Th)
 norm t = TC $ \ ga -> let m = length ga in
   Just $ eval m (iden m) t
 
@@ -72,8 +72,8 @@ ty t = case xt t of
     _ -> barf
   XS e q -> do
     sS <- sy e
-    tT <- eq sS q >>= norm
-    case xt tT of
+    sS <- tg sS q >>= norm
+    case xt sS of
       XU _ -> pure ()
       _ -> barf
   _ -> barf
@@ -81,11 +81,85 @@ ty t = case xt t of
 sy :: Comp -> TC Type
 sy e = case xt e of
   XV i -> ixty i
+  XR t tT -> do
+    ty tT
+    ch tT t
+    pure tT
   _ -> barf
 
-eq :: Type -> Term -> TC Type
-eq sS q = case xt q of
+tg :: Type -> Term -> TC Type
+tg sS q = case xt q of
   XA NIL -> pure sS
   _ -> barf
 
+ch :: Type -> Term -> TC ()
+ch uU t = case xt t of
+  XU v -> (xt <$> norm uU) >>= \case
+    XU w | ltU v w -> pure ()
+    _ -> barf
+  XC (A PI, _) st | Just [sS, b] <- tup st, XB tT <- xt b -> do
+    uU <- norm uU
+    case xt tT of
+      XU Prop -> do
+        ty sS
+        sS !- ch uU tT
+      XU u -> do
+        ch uU sS
+        sS !- ch uU tT
+      _ -> barf
+  XB t -> (xt <$> norm uU) >>= \case
+     XC (A PI, _) st | Just [sS, b] <- tup st, XB tT <- xt b -> do
+       sS !- ch tT t
+     _ -> barf
+  XS e q -> do
+    sS <- sy e
+    sS <- tg sS q
+    cu sS uU
+  _ -> barf
 
+cu :: Type -> Type -> TC ()
+cu sS tT = do
+  sS <- norm sS
+  tT <- norm tT
+  case (xt sS, xt tT) of
+    (XU v, XU w) | leU v w -> pure ()
+    (XC (A PI, _) st0, XC (A PI, _) st1)
+      | (Just [sS0, b0], Just [sS1, b1]) <- (tup st0, tup st1)
+      , (XB tT0, XB tT1) <- (xt b0, xt b1)
+      -> do
+        cu sS1 sS0
+        sS1 !- cu tT0 tT1
+    _ -> uq sS tT
+
+leU :: U -> U -> Bool
+leU  Prop     Prop    = True
+leU  Prop    (Type i) = 0 < i
+leU (Type i) (Type j) = i <= j
+leU  _        _       = False
+
+ltU :: U -> U -> Bool
+ltU  Prop    (Type i) = 0 < i
+ltU (Type i) (Type j) = i < j
+ltU  _        _       = False
+
+
+uq :: Type -> Type -> TC ()
+uq aA bB = do
+  aA <- norm aA  -- optimize another day
+  bB <- norm bB
+  case (xt aA, xt bB) of
+    (XU v, XU w) | v == w -> pure ()
+    (XS ea qa, XS eb qb) -> do
+      sS <- sq ea eb
+      aA <- tg sS qa
+      bB <- tg sS qb
+      uq aA bB
+    _ -> barf
+
+sq :: Comp -> Comp -> TC Type
+sq ea eb = do
+  ea <- norm ea
+  eb <- norm eb
+  case (xt ea, xt eb) of
+    (XV i, XV j) | i == j -> ixty i
+    _ -> barf

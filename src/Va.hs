@@ -27,7 +27,9 @@ ev m rh  V        = case rh{-1,m-} of
   ((E0, _) :& v{-m-}) -> v{-m-}
 ev m rh (P p l r) = case (p, eval m rh l, eval m rh r) of
   (C, l, r) -> C % (l, r)
-  (R, l, r) -> R % (l, r)
+  (R, l, r) -> case xt l of
+    XS e (A NIL, _) -> e
+    _ -> R % (l, r)
   (E, l, r) -> elim m l r
   (S, l, r) -> ship m l r
 

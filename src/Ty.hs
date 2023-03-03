@@ -171,6 +171,9 @@ uq aA bB = do
   bB <- norm bB
   case (xt aA, xt bB) of
     (XU v, XU w) | v == w -> pure ()
+    (a, b) | Just (aS, aT) <- isPi a, Just (bS, bT) <- isPi b -> do
+      uq aS bS
+      aS !- uq aT bT
     (XS ea qa, XS eb qb) -> do
       sS <- sq ea eb
       aA <- tg sS qa
@@ -185,4 +188,32 @@ sq ea eb = do
   eb <- norm eb
   case (xt ea, xt eb) of
     (XV i, XV j) | i == j -> ixty i
+    (XR at aT, XR bt bT) -> do
+      uq aT bT
+      cq aT at bt
+      pure aT
+    (XE ea sa, XE eb sb) -> do
+      sS <- sq ea eb >>= norm
+      case xt sS of
+        x | Just (sS, tT) <- isPi x -> do
+          cq sS sa sb
+          tT // (R % (sa, sS))
+        _ -> barf
     _ -> barf
+
+cq :: Type -> Term -> Term -> TC ()
+cq uU a b = do
+  uU <- norm uU
+  a <- norm a
+  b <- norm b
+  case xt uU of
+    XU _ -> uq a b
+    x | Just (sS, tT) <- isPi x -> sS !- do
+      let test f = E % ((R % (f, uU)) -^ wk, S % ((V, me), (A NIL, no)))
+      sq (test a) (test b)
+      pure ()
+    _ -> case (xt a, xt b) of
+      (XS ea (A NIL, _), XS eb (A NIL, _)) -> do
+        sq ea eb
+        pure ()
+      _ -> barf

@@ -31,14 +31,18 @@ instance Functor TC where fmap = ap . return
 ixty :: Int -> TC Term
 ixty i = TC $ \ ga -> Just (ga <! i)
 
-scop :: TC Int
-scop = TC $ (Just . length)
+nmTy :: Type {-ga-} -> TC Type {-ga-}
+nmTy tT = TC $ \ ga -> Just (tyev ga tT)
 
-norm :: (Tm d, Th) -> TC (Tm d, Th)
-norm t = scop >>= \ m -> pure $ eval m (iden m) t
+nmTm :: Type {-ga-} -> Term {-ga-} -> TC Term {-ga-}
+nmTm tT (t, th) = TC $ \ ga -> Just (chev ga (th <? cxen ga) tT t)
 
-(//) :: (Tm d, Th){-n+1-} -> Comp{-n-} -> TC (Tm d, Th)
-t // s = scop >>= \ m -> pure $ eval m (sben m s) t
+nmCo :: Comp {-ga-} -> TC (Comp, Type) {-ga-}
+nmCo (e, th) = TC $ \ ga -> Just (evsy ga (th <? cxen ga) e)
+
+(//) :: Type{-n+1-} -> (Comp, Type){-n-} -> TC Type{-n-}
+(tT, th) // s = TC $ \ ga ->
+  pure (chev ga (th <? (cxen ga :< s)) (U TYPE, no) tT)
 
 barf :: TC a
 barf = TC $ \ _ -> Nothing
@@ -74,6 +78,31 @@ closed (TC f) = f B0
 ty :: Term -> TC ()
 ty = ch (U TYPE, no)
 
+ch :: Type -> Term -> TC ()
+ch uU t | truce ("ch " ++ show uU ++ " " ++ show t) False = undefined
+ch uU t = case xt t of
+  XU v -> (xt <$> nmTy uU) >>= \case
+    XU w | ltU v w -> pure ()
+    _ -> barf
+  x | Just (sS, tT) <- isPi x -> do
+    uU <- nmTy uU
+    case xt uU of
+      XU Prop -> do
+        ty sS
+        sS !- ch uU tT
+      XU _ -> do
+        ch uU sS
+        sS !- ch uU tT
+      _ -> barf
+  XB t -> (xt <$> nmTy uU) >>= \case
+    x | Just (sS, tT) <- isPi x -> sS !- ch tT t
+    _ -> barf
+  XS e q -> do
+    sS <- sy e
+    sS <- tg sS q
+    cu sS uU
+  _ -> barf
+
 sy :: Comp -> TC Type
 sy e | truce ("sy " ++ show e) False = undefined
 sy e = case xt e of
@@ -83,11 +112,11 @@ sy e = case xt e of
     ch tT t
     pure tT
   XE e s -> do
-    sS <- sy e >>= norm
+    sS <- sy e >>= nmTy
     case xt sS of
       x | Just (sS, tT) <- isPi x -> do
         ch sS s
-        tT // (R % (s, sS))
+        tT // ((R % (s, sS)), sS)
       _ -> barf
 
 tg :: Type -> Term -> TC Type
@@ -96,36 +125,11 @@ tg sS q = case xt q of
   XA NIL -> pure sS
   _ -> barf
 
-ch :: Type -> Term -> TC ()
-ch uU t | truce ("ch " ++ show uU ++ " " ++ show t) False = undefined
-ch uU t = case xt t of
-  XU v -> (xt <$> norm uU) >>= \case
-    XU w | ltU v w -> pure ()
-    _ -> barf
-  x | Just (sS, tT) <- isPi x -> do
-    uU <- norm uU
-    case xt uU of
-      XU Prop -> do
-        ty sS
-        sS !- ch uU tT
-      XU _ -> do
-        ch uU sS
-        sS !- ch uU tT
-      _ -> barf
-  XB t -> (xt <$> norm uU) >>= \case
-    x | Just (sS, tT) <- isPi x -> sS !- ch tT t
-    _ -> barf
-  XS e q -> do
-    sS <- sy e
-    sS <- tg sS q
-    cu sS uU
-  _ -> barf
-
 cu :: Type -> Type -> TC ()
 cu sS tT | truce ("cu " ++ show sS ++ " " ++ show tT) False = undefined
 cu sS tT = do
-  sS <- norm sS
-  tT <- norm tT
+  sS <- nmTy sS
+  tT <- nmTy tT
   case (xt sS, xt tT) of
     (XU v, XU w) | leU v w -> pure ()
     (XC (A PI, _) st0, XC (A PI, _) st1)
@@ -153,8 +157,8 @@ ltU  _        _       = False
 uq :: Type -> Type -> TC ()
 uq aA bB | truce ("uq " ++ show aA ++ " " ++ show bB) False = undefined
 uq aA bB = do
-  aA <- norm aA  -- optimize another day
-  bB <- norm bB
+  aA <- nmTy aA  -- optimize another day
+  bB <- nmTy bB
   case (xt aA, xt bB) of
     (XU v, XU w) | v == w -> pure ()
     (a, b) | Just (aS, aT) <- isPi a, Just (bS, bT) <- isPi b -> do
@@ -170,8 +174,8 @@ uq aA bB = do
 sq :: Comp -> Comp -> TC Type
 sq ea eb | truce ("sq " ++ show ea ++ " " ++ show eb) False = undefined
 sq ea eb = do
-  ea <- norm ea
-  eb <- norm eb
+  ea <- fst <$> nmCo ea
+  eb <- fst <$> nmCo eb
   case (xt ea, xt eb) of
     (XV i, XV j) | i == j -> ixty i
     (XR at aT, XR bt bT) -> do
@@ -179,19 +183,19 @@ sq ea eb = do
       cq aT at bt
       pure aT
     (XE ea sa, XE eb sb) -> do
-      sS <- sq ea eb >>= norm
+      sS <- sq ea eb >>= nmTy
       case xt sS of
         x | Just (sS, tT) <- isPi x -> do
           cq sS sa sb
-          tT // (R % (sa, sS))
+          tT // (R % (sa, sS), sS)
         _ -> barf
     _ -> barf
 
 cq :: Type -> Term -> Term -> TC ()
 cq uU a b = do
-  uU <- norm uU
-  a <- norm a
-  b <- norm b
+  uU <- nmTy uU
+  a <- nmTm uU a
+  b <- nmTm uU b
   case xt uU of
     XU _ -> uq a b
     x | Just (sS, tT) <- isPi x -> sS !- do

@@ -71,25 +71,8 @@ closed (TC f) = f B0
 -- check some types?
 ------------------------------------------------------------------------------
 
-isPi :: XTm Ch {-n-} -- presumed normalised
-     -> Maybe (Term {-n-}, Term {-n+1-})
-isPi (XC (A PI, _) st) | Just [sS, b] <- tup st, XB tT <- xt b = Just (sS, tT)
-isPi _ = Nothing
-
 ty :: Term -> TC ()
-ty t | truce ("type " ++ show t) False = undefined
-ty t = case xt t of
-  XU _ -> pure ()
-  x | Just (sS, tT) <- isPi x -> do
-    ty sS
-    sS !- ty tT
-  XS e q -> do
-    sS <- sy e
-    sS <- tg sS q >>= norm
-    case xt sS of
-      XU _ -> pure ()
-      _ -> barf
-  _ -> barf
+ty = ch (U TYPE, no)
 
 sy :: Comp -> TC Type
 sy e | truce ("sy " ++ show e) False = undefined
@@ -125,7 +108,7 @@ ch uU t = case xt t of
       XU Prop -> do
         ty sS
         sS !- ch uU tT
-      XU u -> do
+      XU _ -> do
         ch uU sS
         sS !- ch uU tT
       _ -> barf
@@ -157,11 +140,14 @@ leU :: U -> U -> Bool
 leU  Prop     Prop    = True
 leU  Prop    (Type i) = 0 < i
 leU (Type i) (Type j) = i <= j
+leU  _        TYPE    = True
 leU  _        _       = False
 
 ltU :: U -> U -> Bool
 ltU  Prop    (Type i) = 0 < i
 ltU (Type i) (Type j) = i < j
+ltU  TYPE     _       = False
+ltU  _        TYPE    = True
 ltU  _        _       = False
 
 uq :: Type -> Type -> TC ()

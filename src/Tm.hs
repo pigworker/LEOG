@@ -28,9 +28,14 @@ deriving instance Show (Tm d)
 newtype Atom = N Int deriving (Show, Eq)
 pattern NIL = N 0
 pattern PI  = N 1
+pattern IRR = N 2
+pattern QQ = N 3
 
 -- sorts are prop or type
-data U = Prop | Type Int deriving (Show, Eq)
+data U = Prop      -- impredicative, inhabits and embeds in Type 1 and above
+       | Type Int  -- predicative, starts at Type 0
+       | TYPE      -- used only for checking judgements
+       deriving (Show, Eq)
 
 -- scopes are vacuous or otherwise
 data Sc {-n-} :: * where
@@ -66,10 +71,29 @@ ib (L t, th) = (t, th -: True)
 tup :: Term -> Maybe [Term]
 tup (A NIL, _) = pure []
 tup (P C s t, ps) = (-^ ps) <$> ((s :) <$> tup t)
+tup _ = Nothing
 
 list :: [Term] -> Term
 list [] = (A NIL, no)
 list (x : xs) = C % (x, list xs)
+
+-- pi types
+pI :: Type {-n-} -> Type {-n+1-} -> Type {-n-}
+pI sS tT = list [(A PI, no), sS, bi tT]
+
+isPi :: XTm Ch {-n-} -- presumed normalised
+     -> Maybe (Term {-n-}, Term {-n+1-})
+isPi (XC (A PI, _) st) | Just [sS, b] <- tup st, XB tT <- xt b = Just (sS, tT)
+isPi _ = Nothing
+
+-- irr types
+irr :: Term {-n-} -> Type {-n-}
+irr pP = list [(A IRR, no), pP]
+
+-- type equality
+qTy :: Type {-n-} -> Type {-n-} -> Type {-n-}
+qTy sS tT = irr . list $ [(A QQ, no), sS, tT]
+
 
 -- top-layer expansion
 data XTm (d :: Dir) :: * where

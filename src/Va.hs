@@ -11,64 +11,88 @@ import Control.Arrow ((***), first, second)
 import Debug.Trace
 track = const id
 
-eval :: {-m-}Int -> En {-n,m-} -> (Tm d, Th){-n-} -> (Tm d, Th) {-m-}
-eval m rh (t, th) = case th ^% rh of
-  (rh, th) -> ev (combien th m) rh t -^ th
+tyev :: Bwd {-m-} Type{-m-}           -- cx
+     -> Type {-m-}                    -- type over cx
+     -> Type {-m-}                    -- type, normalised
+tyev de (u, th) = chev de (th <? cxen de) (U TYPE, no) u
 
-ev :: {-m-}Int -> En {-n,m-} -> Tm d {-n-} -> (Tm d, Th) {-m-}
-ev m rh t
-  | track (concat ["ev: ", show m, " ", show rh, " ", show t]) False
-  = undefined
-ev m E0 (A a)     = (A a, no)
-ev m E0 (U u)     = (U u, no)
-ev m rh (B (K t)) = first (B . K) (ev m rh t)
-ev m rh (B (L t)) = bi (ev (m + 1) (wken rh) t)
-ev m rh  V        = case rh{-1,m-} of
-  ((E0, _) :& v{-m-}) -> v{-m-}
-ev m rh (P p l r) = case (p, eval m rh l, eval m rh r) of
-  (C, l, r) -> C % (l, r)
-  (R, l, r) -> case xt l of
-    XS e (A NIL, _) -> e
-    _ -> R % (l, r)
-  (E, l, r) -> elim m l r
-  (S, l, r) -> ship m l r
+chev :: Bwd {-m-} Type{-m-}           -- trg cx
+     -> Bwd {-n-} (Comp, Type){-m-}   -- src var vals & types over trg cx
+     -> Type {-m-}                    -- type over trg cx
+     -> Tm Ch {-n-}                   -- src tm
+     -> Term{-m-}                     -- trg val
+-- if it's an embedded computation, synthesize and ship
+chev de ga v (P S (e, th) (q, ph)) = case evsy de (th <? ga) e of
+  (e, u) -> case chev de (ph <? ga) (qTy u v) q of
+    q -> ship de e u q v
+chev de ga _ (U u) = (U u, no)
+-- otherwise, it's canonical and should have a canonical type
+chev de ga u t = case tyev de u of
+  u -> case (xt u, t) of
+    (XU _, x)
+      | Just ((sS, th), (tT, ph)) <- isPi (xt (x, io)) ->
+        case chev de (th <? ga) u sS of
+          sS -> case chev ((de :< sS) -^ wk) (ph <? wken ga sS) u tT of
+            tT -> pI sS tT
+      | Just [(A IRR, _), (pP, th)] <- tup (x, io) ->
+        case chev de (th <? ga) (A IRR, no) pP of
+          pP -> irr pP
+      | A IRR <- t -> (A IRR, no)
+    (x, B b) | Just (sS, tT) <- isPi x -> case ib (b, io) of
+      (b, th) -> bi (chev ((de :< sS) -^ wk) (th <? wken ga sS) tT b)
+    (XA IRR, t)
+      | Just [(A QQ, _), (sS, th), (tT, ph)] <- tup (t, io) ->
+          list [(A QQ, no), chev de (th <? ga) (U TYPE, no) sS
+                          , chev de (ph <? ga) (U TYPE, no) tT]
+    _ | Just [(A IRR, _), pP] <- tup u
+      , Just [(A QQ, _), _, _] <- tup pP
+      , A NIL <- t
+      -> (A NIL, no)
+    z -> error (show z)
 
-elim :: {-m-}Int -> Comp {-m-} -> Term {-m-} -> Comp {-m-}
-elim m e s | XR f u <- xt e = case tup u of
-  Just [(A PI, _), sS, x] | XB tT <- xt x, XB t <- xt f ->
-    eval m (sben m (R % (s, sS))) (R % (t, tT))
-  _ -> E % (e, s)
-elim _ e s = E % (e, s)
+evsy :: Bwd {-m-} Type{-m-}           -- trg cx
+     -> Bwd {-n-} (Comp, Type){-m-}
+     -> Tm Sy {-n-}
+     -> (Comp, Type){-m-} 
+evsy de (B0 :< eS) V = eS
+evsy de ga (P R (t, th) (u, ph)) = case chev de (ph <? ga) (U TYPE, no) u of
+  u -> case chev de (th <? ga) u t of
+    t -> (R % (t, u), u)
+evsy de ga (P E (e, th) (s, ph)) = case evsy de (th <? ga) e of
+  (e, u) -> case tyev de u of
+    u -> case xt u of
+      x | Just (sS, (tT, ch)) <- isPi x ->
+        case chev de (ph <? ga) sS s of
+          s -> case cxen de :< (R % (s, sS), sS) of
+            ga -> case chev de (ch <? ga) (U TYPE, no) tT of
+              tT -> case xt e of
+                XR f _ | XB (t, ps) <- xt f -> case chev de (ps <? ga) tT t of
+                  t -> (R % (t, tT), tT)
+                _ -> (E % (e, s), tT)
+evsy de ga e = error (show (ga, e))
 
-ship :: {-m-}Int -> Comp {-m-} -> Term {-m-} -> Term {-m-}
-ship m e q = case (xt e, xt q) of
-  (XR t u, XA NIL) -> t
-  _ -> S % (e, q)
+ship :: Bwd {-m-} Type{-m-}           -- cx
+     -> Comp {-m-} -- what to ship
+     -> Type {-m-} -- source type (normal)
+     -> Term {-m-} -- path
+     -> Type {-m-} -- target type (normal)
+     -> Term {-m-} -- result
+ship de e u (A NIL, _) v | XR t _ <- xt e = t
+ship de e _ q _ = S % (e, q)
 
--- environments
-data En
-  = E0 {-0,0-}
-  | (En, Th){-m,n-} :& Comp{-n-} -- {-m+1,n-}
-  deriving Show
 
-sben :: {-m-}Int -> Comp{-m-} -> En {-m+1,m-}
-sben m e = (iden m, io) :& e
 
-wken :: En {-n,m-} -> En {-n+1,m+1-}
-wken rh = (rh, wk) :& (V, me)
 
-iden :: {-m-}Int -> En {-m,m-}
-iden 0 = E0
-iden m = wken (iden (m - 1))
+wken :: Bwd {-n-} (Comp, Type){-m-}
+     -> Type {-m-}
+     -> Bwd {-n+1-} (Comp, Type){-m+1-}
+wken ga sS = (((-^ wk) *** (-^ wk)) <$> ga) :< ((V, me), sS -^ wk)
 
-(^%) :: Th {-n,m-} -> En {-m,m'-} -> {-exists n'-} (En {-n,n'-}, Th {-n',m'-})
-th ^% E0 = (E0, no)
-th ^% ((rh, ph0) :& (c, ph1)) = case thun th of
-  (th, False) -> case th ^% rh of
-    (rh, th) -> (rh, th -^ ph0)
-  (th, True)  -> case th ^% rh of
-    (rh, th) -> case cop (th -^ ph0) ph1 of
-      (ph0, ps, ph1) -> ((rh, ph0) :& (c, ph1), ps)
+cxen :: Bwd {-n-} Type{-m-}              -- cx
+     -> Bwd {-n-} (Comp{-n-}, Type{-m-}) -- identity environment on cx
+cxen     B0    =                             B0
+cxen (ga :< s) = (first (-^ wk) <$> cxen ga) :< ((V, me), s)
+
 
 --
 

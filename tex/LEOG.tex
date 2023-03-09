@@ -1,0 +1,155 @@
+\documentclass{article}
+\usepackage{a4}
+\usepackage{pig}
+
+\newcommand{\lsq}{\texttt{\symbol{91}}}
+\newcommand{\bsl}{\texttt{\symbol{92}}}
+\newcommand{\rsq}{\texttt{\symbol{93}}}
+\newcommand{\lcu}{\texttt{\symbol{123}}}
+\newcommand{\lba}{\texttt{\symbol{124}}}
+\newcommand{\rcu}{\texttt{\symbol{125}}}
+
+\begin{document}
+\title{LEOG}
+\author{Conor Mc Bride}
+\maketitle
+
+\section{introduction}
+
+I'm trying to cook up a variant of the Calculus of (Inductive, etc) Constructions which is \emph{bidirectional} in Curry style, and \emph{observational} in that equality reflects what you can do with things, rather than how they are constructed (which makes a difference when the elimination form does not permit observation of construction).
+
+The purpose of this note is simply to record what I think the rules are.
+
+
+\section{syntax}
+
+\newcommand{\Prop}{\textbf{Prop}}
+\newcommand{\Type}[1]{\textbf{Type}_{#1}}
+\newcommand{\TYPE}{\star}
+
+\subsection{sorts}
+
+We have sorts $\Prop$ and $\Type{n}$ for natural $n$. Administratively, we have a `topsort' $\TYPE$, which should appear only as the type in a checking judgement (i.e., morally, there is a separate type formation judgement) and as the upper bound in a cumulativity judgement (because a type of any sort is a type).
+
+As in CIC, the sort $\Prop$ admits impredicative universal quantification.
+
+
+\subsection{canonical things}
+
+\newcommand{\A}[1]{\texttt{'#1}}
+\newcommand{\nil}{\lsq\rsq}
+\newcommand{\X}[2]{\lsq#1\lba#2\rsq}
+\newcommand{\B}[2]{\bsl#1\texttt{.}\,#2}
+\newcommand{\E}[2]{#1\lcu#2\rcu}
+\newcommand{\PI}[3]{\lsq\A{Pi}\;#1\;\B{#2}{#3}\rsq}
+
+We have \emph{atoms} $\A{\textit{atom}}$. We have pairs $\X st$, with the usual LISP right-bias convention that $\nil$ the syntacitcally valid name for the atom $\A{}$, and $\lba\lsq$ may be omitted along with the matching $\rsq$.
+
+Invariance up to alpha-equivalence is quite helpful, so let us not use magical atoms for abstraction. Instead, let us have $\B xt$ abstracting the \emph{variable} $x$ from $t$.
+
+Given these ingredients, we can construct canonical forms such as $\PI SxT$. Note that canonical forms are not expected to make sense in and of themselves: the best we can hope is that sense is made of them. They will always be type\emph{checked}.
+
+Of course, once we have free variables, we have \emph{noncanonical} things. They embed in the canonical things as $\E eq$, where $e$ is noncanonical and $q$ is a canonical proof that $e$ fits where it's put. We may shorten $\E e\nil$ to $e$, as $\nil$ will always serve as the proof term when judgemental cumulativity/equality is enough.
+
+
+\subsection{noncanonical things}
+
+\newcommand{\e}[1]{\texttt{-}#1}
+\newcommand{\R}[2]{#1\texttt{:}#2}
+
+We have variables $x$ within $t$ for some $\B xt$. We also have $e\e s$ for noncanonical $s$, an eliminator appropriate to the type of $e$ (e.g., if $e$ is a function, $s$ is its argument).
+
+Finally, we have $\R tT$, a \emph{radical}, allowing us to annotate a canonical term with a canonical type, and thus form redexes.
+
+
+\section{typing awaiting computation}
+
+\newcommand{\ch}[2]{#1 \:\ni\: #2}
+\newcommand{\sy}[2]{#1 \:\in\: #2}
+\newcommand{\hy}{\;\vdash\;}
+\newcommand{\CU}[2]{\lsq\A{Le}\:#1\:#2\rsq}
+
+We shall have judgement forms for checking $\ch Tt$ (\emph{relying} on $\ch\TYPE T$) and synthesis $\sy eS$ (guaranteeing that $\ch\TYPE S$). At some point, these will be closed appropriately under computation, but let's leave that to the next section.
+
+
+\subsection{type checking}
+
+For sorts $w$, $u$, we have
+
+\[
+\Rule{w > u} {\ch wu}\qquad
+\Axiom{\TYPE > \Type n}\quad
+\Axiom{\TYPE > \Prop}\quad
+\Rule{m > n}{\Type m > \Type n}\quad
+\Axiom{\Type n > \Prop}
+\]
+I'm aware that the Coq tradition (from the days of impredicative \textbf{Set}) is to place $\Prop$ on a par with $\Type 0$ and below $\Type 1$, but the above formulation says yes to all those things and more. Besides, this system isn't called LEOG for nothing.
+
+Meanwhile, for function types,
+\[
+\Rule{\ch wS \hg \sy xS \hy \ch uT}
+     {\ch u \PI SxT}
+     \;\mbox{where}\;
+     w = \left\{\begin{array}{ll}\TYPE & \mbox{if}\;u=\Prop\\
+                                     u & \mbox{otherwise}\end{array}\right.
+\]
+making $\Prop$ impredicative.
+
+For functions, we have
+\[\Rule{\sy xS \hy \ch Tt}{\ch{\PI SxT}{\B xt}}
+\]
+
+On the checking side, that leaves us with only the shipment of synthesizable terms.
+\[
+\Rule{e\in S \hg \CU ST \ni q}
+     {T\ni \E eq }
+\]
+where this $\A{Le}$ thing is \emph{propositional cumulativity}. For all sorts $u$,
+because for $u=\Prop$
+\[
+\Rule{\TYPE\ni S \hg \TYPE\ni T}
+     {u\ni\CU ST}
+\]
+Let us have
+\[
+\Axiom{\CU\Prop{\Type n} \ni \nil}\qquad
+\Rule{i < j}
+     {\CU{\Type i}{\Type j}\ni \nil}
+\]
+and the (domain contravariant!)
+\[
+\Rule{\CU{S'}S\ni \nil \hg \sy x{S'}\hy \CU T{T'}\ni \nil}
+{\CU{\PI SxT}{\PI{S'}x{T'}}\ni\nil}
+\]
+along with the inclusion of judgemental equality
+\[
+\Rule{\TYPE\ni S\equiv T}
+{\CU ST \ni \nil}
+\]
+Nontrivial proofs of cumulativity will arrive in due course.
+
+
+\subsection{type synthesis}
+
+I write a reverse turnstile to indicate an appeal to a local hypothesis,
+which is as close as I get to mentioning the context. Radicals are
+straightforward, thanks to the `topsort'.
+\[
+\Rule{\dashv\; \sy xS}
+{\sy x S}
+\qquad
+\Rule{\ch\TYPE T\hg \ch Tt}
+     {\sy{\R tT}T}
+\qquad
+\Rule{\sy e{\PI SxT}\hg \ch Ss}
+{\sy{e\e s}{T[\R sS]}}
+\]
+Application is unremarkable,
+except to note that (i) there is no need to mention $x$ by name when
+substituting it, because it is clear that it is $x$ which has moved out of
+scope, and (ii) that $s$ has to be radicalised before it can be substituted
+for $x$, from sheer syntactic compatibility and to create new redexes.
+
+
+
+\end{document}

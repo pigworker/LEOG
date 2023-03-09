@@ -142,13 +142,13 @@ cu sS tT = do
 
 leU :: U -> U -> Bool
 leU  Prop     Prop    = True
-leU  Prop    (Type i) = 0 < i
+leU  Prop    (Type i) = True
 leU (Type i) (Type j) = i <= j
 leU  _        TYPE    = True
 leU  _        _       = False
 
 ltU :: U -> U -> Bool
-ltU  Prop    (Type i) = 0 < i
+ltU  Prop    (Type i) = True
 ltU (Type i) (Type j) = i < j
 ltU  TYPE     _       = False
 ltU  _        TYPE    = True

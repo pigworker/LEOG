@@ -1,6 +1,7 @@
 \documentclass{article}
 \usepackage{a4}
 \usepackage{pig}
+\usepackage{latexsym}
 
 \newcommand{\lsq}{\texttt{\symbol{91}}}
 \newcommand{\bsl}{\texttt{\symbol{92}}}
@@ -149,6 +150,58 @@ except to note that (i) there is no need to mention $x$ by name when
 substituting it, because it is clear that it is $x$ which has moved out of
 scope, and (ii) that $s$ has to be radicalised before it can be substituted
 for $x$, from sheer syntactic compatibility and to create new redexes.
+
+
+\section{computation, na\"\i vely}
+
+\newcommand{\st}{\leadsto}
+
+The basic plan is to extend checking and synthesis with small step reduction, so
+\[
+\ch T{t\st v} \qquad \sy{e\st u}S
+\]
+with single substitution doing the work. In practice, I use a big step environment
+machine, but let us at least have an executable specification. We should first of all plug
+computation into typing.
+\[
+\Rule{\ch\TYPE{T\st V}\hg V\ni t}
+     {\ch Tt}
+\qquad
+\Rule{\sy eS \hg \ch\TYPE{S\st V}}
+     {\sy eV}
+\]
+Doing so establishes the obligation that $\st^\ast$ does enough computation to expose
+a head canonical form, but need not go all the way to the canonical representative
+of the judgemental equivalence class. The latter is certainly an option, however.
+
+Note that these computation judgements have no \emph{subjects}. They may presume
+that the thing to be reduced has been checked already. Observe that, above left,
+the rule's client is responsible for $T$ being a type, whilst above right, $S$
+the rule's first premise is responsible for $S$ being a type. Of course, the
+computation rules are responsible for the reduced terms they output, which must
+serve in place of the input. For checking, that means the type which checked the
+input checks the output; for synthesis, that means the type synthesized for the
+output must be \emph{possible} for the input --- type synthesis now admits
+post-computation and is thus ambiguous.
+
+So far, we have two rules which matter
+\[
+\Axiom{\sy {(\R{\B xt}{\PI SxT})\e s \st (\R{t}{T})[\R sS]}{T[\R sS]}}
+\qquad
+\Axiom{\ch T{\E{\R sS}\nil \st s}}
+\]
+together with a bunch of structural closure rules, e.g.
+\[
+\Rule{\sy xS \hy \ch\TYPE{T \st T'}}
+     {\ch\TYPE{\PI SxT \st \PI Sx{T'}}}
+\]
+and a problem, if we want $\CU ST$ to be judgementally proof-irrelevant. We
+can't very well claim that the proof doesn't matter if we keep checking to see
+if it's $\nil$. We should, instead, check if it \emph{could} be $\nil$, and so
+we shall, in due course.
+
+
+\section{judgemental equality}
 
 
 

@@ -203,6 +203,70 @@ we shall, in due course.
 
 \section{judgemental equality}
 
+We shall have judgements for type-directed equality of chceckables and type
+reconstructing equality of synthesizables.
+\[
+\ch T{t_0\equiv t_1} \qquad \sy{e_0\equiv e_1}{S}
+\]
+where the former presumes $\ch\TYPE T$, $\ch T{t_0}$ and $\ch T{t_1}$, while
+the latter presumes $\sy{e_0}{S_0}$, $\sy{e_1}{S_1}$ and guarantees that
+$\ch\TYPE S$, with $\ch\TYPE S{S_0}$ and $\ch\TYPE S{S_1}$.
 
+Of course, these judgements are closed under computation in the appropriate way:
+\[
+\Rule{\ch\TYPE{T\st V}\hg \ch V{t_0\equiv t_1}}
+     {\ch T{t_0\equiv t_1}}
+\]
+\[
+\Rule{\ch T{t_0\st v_0}\hg \ch T{v_0\equiv t_1}}
+     {\ch T{t_0\equiv t_1}}
+     \qquad
+\Rule{\ch T{t_1\st v_1}\hg \ch T{t_0\equiv v_1}}
+     {\ch T{t_0\equiv t_1}}
+\]
+\[
+\Rule{\sy{e_0\st w_0}{S_0}\hg \sy{w_0\equiv e_1}S}
+     {\sy{e_0\equiv e_1}S}
+     \qquad
+\Rule{\sy{e_1\st w_1}{S_1}\hg \sy{e_0\equiv w_1}S}
+     {\sy{e_0\equiv e_1}S}
+\]
+\[
+\Rule{\sy{e_0\equiv e_1}S\hg \ch\TYPE{S\st V}}
+     {\sy{e_0\equiv e_1}V}
+\]
+
+Now, for canonical things, we have only reflexivity.
+\[
+\Axiom{\ch w{\Prop\equiv\Prop}}\qquad
+\Axiom{\ch w{\Type i\equiv\Type i}}
+\]
+For functions, we $\eta$-expand:
+\[
+\Rule{\sy xS \hy \ch T (\R{v_0}{\PI SxT})\e x \equiv (\R{v_1}{\PI SxT})\e x}
+     {\ch{\PI SxT}{v_0\equiv v_1}}
+\]
+For embedded neutrals, we have
+\[
+\Rule{\sy{e_0\equiv e_1}S}
+     {\ch T{\E{e_0}{q_0} \equiv \E{e_1}{q_1}}}
+\]
+studiously ignoring the proofs $q_0$ and $q_1$.
+
+In the other direction, we have
+\[
+\Rule{\dashv\; \sy xS}
+     {\sy{x\equiv x}S}
+     \qquad
+\Rule{\sy{e_0\equiv e_1}{\PI SxT}\hg \ch S{s_0\equiv s_1}}
+     {\sy{e_0\e{s_0}\equiv e_1\e{s_1}}{T[\R{s_0}S]}}
+\]
+
+What to do about radicals that's better than
+\[
+\Rule{\ch\TYPE{T_0\equiv T_1}\hg \ch{T_0}{t_0\equiv t_1}}
+{\sy{\R{t_0}{T_0}\equiv\R{t_1}{T_1}}{T_0}}
+\]
+is something I'll sleep on.
 
 \end{document}
